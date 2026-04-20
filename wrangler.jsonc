@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "les-recettes-de-papa-poulpe",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-04-14",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "les-recettes-papa-poulpe",
+      "database_id": "6545e3c6-9824-4078-8cb8-6da86e4f8262",
+      "migrations_dir": "./migrations"
+    }
+  ]
+}

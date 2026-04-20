@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Les recettes de papa poulpe</title>
+  <meta name="theme-color" content="#c76a3f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Papa poulpe" />
+  <link rel="apple-touch-icon" href="assets/app-icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div class="container">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Web-app iPhone</p>
+          <div class="hero-title-row"><h1>Les recettes de papa poulpe</h1><span class="version-pill">v0.42</span></div>
+          <p class="hero-text">Enregistre tes recettes, importe un lien, retrouve vite quoi cuisiner avec ce que tu as déjà chez toi.</p>
+          <div class="hero-actions">
+            <button class="btn secondary" id="exportJsonBtn" type="button">Exporter JSON</button>
+            <button class="btn secondary" id="exportCsvBtn" type="button">Exporter CSV</button>
+          </div>
+        </div>
+        <div class="hero-illustration">
+          <img src="assets/papa-poulpe-chef-v2.png" alt="Papa poulpe qui cuisine" />
+        </div>
+      </header>
+
+      <section class="stats" id="stats"></section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Import automatique depuis un lien</h2>
+            <p class="section-subtitle">L’app tente de récupérer titre, image, ingrédients, description et étapes. Une copie locale utile est aussi sauvegardée.</p>
+          </div>
+        </div>
+        <div class="import-box">
+          <div class="import-row">
+            <input id="importUrl" type="url" placeholder="Colle le lien d’une recette" />
+            <button class="btn primary" id="importBtn" type="button">Importer</button>
+          </div>
+          <p class="help">Après l’import, tu peux corriger la fiche avant de l’enregistrer.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Recherche et filtres</h2>
+            <p class="section-subtitle">Trie tes recettes selon la catégorie, les favoris et les ingrédients disponibles.</p>
+          </div>
+        </div>
+        <div class="quick-categories" id="quickCategories"></div>
+        <div class="filter-grid">
+          <div>
+            <label for="availableIngredients">Ingrédients disponibles</label>
+            <textarea id="availableIngredients" placeholder="oeufs, tomates, crème, lardons..."></textarea>
+          </div>
+          <div class="search-side">
+            <div>
+              <label for="searchText">Recherche</label>
+              <input id="searchText" placeholder="titre, ingrédient, note..." />
+            </div>
+            <div class="inline-grid">
+              <div>
+                <label for="filterCategory">Catégorie</label>
+                <select id="filterCategory">
+                  <option value="">Toutes</option>
+                  <option value="Entrée">Entrée</option>
+                  <option value="Plat">Plat</option>
+                  <option value="Dessert">Dessert</option>
+                  <option value="Apéritif">Apéritif</option>
+                  <option value="Petit-déjeuner">Petit-déjeuner</option>
+                  <option value="Boisson">Boisson</option>
+                  <option value="Sauce">Sauce</option>
+                  <option value="Autre">Autre</option>
+                </select>
+              </div>
+              <div>
+                <label for="filterFav">Favoris</label>
+                <select id="filterFav">
+                  <option value="">Tous</option>
+                  <option value="fav">Favoris seulement</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="recipes-section">
+        <div class="recipes-head">
+          <div>
+            <h2>Mes recettes</h2>
+            <p id="resultsSummary" class="section-subtitle">0 recette(s) affichée(s)</p>
+          </div>
+          <button class="btn secondary" id="scrollTopBtn" type="button">Haut de page</button>
+        </div>
+        <div id="recipesGrid" class="recipes-grid"></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="editModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow" id="formEyebrow">Ajouter / modifier</p>
+          <h2 id="formTitle">Fiche recette</h2>
+        </div>
+        <button class="icon-btn" id="closeEditBtn" aria-label="Fermer">✕</button>
+      </div>
+
+      <form id="recipeForm" class="form-grid">
+        <input id="title" placeholder="Titre" />
+        <input id="url" placeholder="Lien" />
+
+        <div class="category-group">
+          <label>Catégorie</label>
+          <div class="category-chips" id="categoryChips">
+            <button type="button" class="category-chip active" data-value="Entrée">Entrée</button>
+            <button type="button" class="category-chip" data-value="Plat">Plat</button>
+            <button type="button" class="category-chip" data-value="Dessert">Dessert</button>
+            <button type="button" class="category-chip" data-value="Apéritif">Apéritif</button>
+            <button type="button" class="category-chip" data-value="Petit-déjeuner">Petit-déjeuner</button>
+            <button type="button" class="category-chip" data-value="Boisson">Boisson</button>
+            <button type="button" class="category-chip" data-value="Sauce">Sauce</button>
+            <button type="button" class="category-chip" data-value="Autre">Autre</button>
+          </div>
+          <input type="hidden" id="category" value="Entrée" />
+        </div>
+
+        <input id="image" placeholder="Lien image" />
+        <textarea id="ingredients" placeholder="Ingrédients, un par ligne ou séparés par des virgules"></textarea>
+        <textarea id="notes" placeholder="Notes personnelles"></textarea>
+        <div class="snapshot-status" id="snapshotStatus">Aucune copie locale enregistrée pour cette recette.</div>
+        <div class="form-actions">
+          <button class="btn primary" type="submit">Enregistrer</button>
+          <button class="btn secondary" type="button" id="cancelBtn">Annuler</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="snapshotModal">
+    <div class="modal-card snapshot-card">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">Copie enregistrée</p>
+          <h2 id="snapshotTitle">Recette</h2>
+        </div>
+        <button class="icon-btn" id="closeSnapshotBtn" aria-label="Fermer">✕</button>
+      </div>
+      <div id="snapshotContent" class="snapshot-content"></div>
+      <div class="form-actions single-action">
+        <button class="btn secondary" type="button" id="copySnapshotBtn">Copier le texte</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "les-recettes-de-papa-poulpe-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web-app recettes iPhone avec Cloudflare Workers + D1.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create les-recettes-papa-poulpe",
+    "db:migrate": "wrangler d1 migrations apply DB --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.13.2"
+  }
+}
