@@ -30,6 +30,168 @@ function parseIngredients(text) {
     .filter(Boolean);
 }
 
+
+function parseSteps(text) {
+  return String(text || '')
+    .split(/\n+/)
+    .map(v => cleanClientText(v.replace(/^\d+[.)-]\s*/, '')))
+    .filter(Boolean);
+}
+
+function normalizeClientSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  return {
+    ...snapshot,
+    title: cleanClientText(snapshot.title),
+    description: cleanClientText(snapshot.description),
+    image: snapshot.image || '',
+    ingredients: Array.isArray(snapshot.ingredients) ? snapshot.ingredients.map(cleanClientText).filter(Boolean) : [],
+    instructions: Array.isArray(snapshot.instructions) ? snapshot.instructions.map(cleanClientText).filter(Boolean) : [],
+    totalTime: cleanClientText(snapshot.totalTime),
+    recipeYield: cleanClientText(snapshot.recipeYield)
+  };
+}
+
+let ocrScriptPromise = null;
+
+function splitOcrLines(text) {
+  return String(text || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map(line => cleanClientText(line))
+    .filter(Boolean);
+}
+
+function findSectionLines(lines, patterns) {
+  const regs = patterns.map(pattern => new RegExp(pattern, 'i'));
+  const isHeader = line => /^(ingredients?|ingrédients?|preparation|préparation|etapes?|étapes?|instructions?|materiel|matériel|ustensiles?)\s*:?\s*$/i.test(line);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!regs.some(re => re.test(lines[i]))) continue;
+    const out = [];
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const line = lines[j];
+      if (j > i + 1 && isHeader(line)) break;
+      out.push(line);
+    }
+    if (out.length) return out;
+  }
+  return [];
+}
+
+function parsePhotoRecipeText(text) {
+  const lines = splitOcrLines(text);
+  const title = lines.find(line => line.length >= 6 && !/^(ingredients?|ingrédients?|preparation|préparation|etapes?|étapes?|temps|portions?)\b/i.test(line)) || 'Recette photo';
+
+  const ingredientSection = findSectionLines(lines, ['^ingredients?\\s*:?\\s*$', '^ingr[ée]dients?\\s*:?\\s*$']);
+  const stepSection = findSectionLines(lines, ['^preparation\\s*:?\\s*$', '^pr[ée]paration\\s*:?\\s*$', '^etapes?\\s*:?\\s*$', '^étapes?\\s*:?\\s*$', '^instructions?\\s*:?\\s*$']);
+
+  let ingredients = ingredientSection.map(line => line.replace(/^[-•*]\s*/, '')).filter(Boolean);
+  let instructions = stepSection.map(line => line.replace(/^[-•*]\s*/, '').replace(/^\d+[.)-]\s*/, '')).filter(Boolean);
+
+  if (!ingredients.length) {
+    ingredients = lines
+      .filter(line =>
+        /^[-•*]/.test(line) ||
+        /^\d+\s*(g|kg|ml|cl|l)\b/i.test(line) ||
+        /^\d+\s+(oeufs?|œufs?|cuill[eè]res?)\b/i.test(line) ||
+        /farine|sucre|beurre|lait|oeuf|œuf|sel|poivre|huile|cr[eè]me|chocolat|vanille|levure/i.test(line)
+      )
+      .map(line => line.replace(/^[-•*]\s*/, ''))
+      .slice(0, 25);
+  }
+
+  if (!instructions.length) {
+    instructions = lines
+      .filter(line =>
+        /^\d+[.)-]\s*/.test(line) ||
+        /m[eé]lange|ajoute|ajouter|verse|faire|cuire|bats?|pr[eé]chauffe|laisser|incorpore|enfourne/i.test(line)
+      )
+      .map(line => line.replace(/^\d+[.)-]\s*/, ''))
+      .slice(0, 20);
+  }
+
+  const totalTimeLine = lines.find(line => /^temps\b/i.test(line)) || '';
+  const portionsLine = lines.find(line => /^(portions?|pour\s+\d+)/i.test(line)) || '';
+  const description = lines.slice(1, 4).join(' ');
+
+  return {
+    title: cleanClientText(title),
+    description: cleanClientText(description),
+    ingredients: ingredients.map(cleanClientText).filter(Boolean),
+    instructions: instructions.map(cleanClientText).filter(Boolean),
+    totalTime: cleanClientText(totalTimeLine.replace(/^temps\s*:?\s*/i, '')),
+    recipeYield: cleanClientText(portionsLine.replace(/^portions?\s*:?\s*/i, ''))
+  };
+}
+
+function loadTesseractScript() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (ocrScriptPromise) return ocrScriptPromise;
+  ocrScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    script.async = true;
+    script.onload = () => window.Tesseract ? resolve(window.Tesseract) : reject(new Error('OCR indisponible.'));
+    script.onerror = () => reject(new Error('Impossible de charger le module OCR.'));
+    document.head.appendChild(script);
+  });
+  return ocrScriptPromise;
+}
+
+async function importFromPhotoFile(file) {
+  if (!file) return;
+  const button = el('photoImportBtn');
+  const input = el('photoImportInput');
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Analyse...';
+  try {
+    const Tesseract = await loadTesseractScript();
+    const result = await Tesseract.recognize(file, 'fra+eng', {
+      logger: msg => {
+        if (msg.status === 'recognizing text' && typeof msg.progress === 'number') {
+          button.textContent = `Analyse ${Math.round(msg.progress * 100)}%`;
+        }
+      }
+    });
+    const rawText = result?.data?.text || '';
+    const parsed = parsePhotoRecipeText(rawText);
+    const snapshot = normalizeClientSnapshot({
+      sourceUrl: '',
+      title: parsed.title,
+      description: parsed.description,
+      ingredients: parsed.ingredients,
+      instructions: parsed.instructions,
+      totalTime: parsed.totalTime,
+      recipeYield: parsed.recipeYield,
+      image: '',
+      savedAt: new Date().toISOString()
+    });
+
+    resetForm();
+    el('formEyebrow').textContent = 'Import photo';
+    el('formTitle').textContent = 'Vérifie puis enregistre';
+    el('title').value = parsed.title || '';
+    el('url').value = '';
+    el('image').value = '';
+    el('ingredients').value = parsed.ingredients.join('\n');
+    el('steps').value = parsed.instructions.join('\n');
+    el('notes').value = parsed.description || rawText.slice(0, 1200);
+    const guessed = inferCategory(parsed.title || '', parsed.description || '');
+    setActiveCategoryChip(guessed);
+    setSnapshot(snapshot);
+    openModal(el('editModal'));
+    showToast('Photo analysée.');
+  } catch (error) {
+    console.error('Photo import failed', error);
+    showToast(error?.message || 'Analyse photo impossible.');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+    input.value = '';
+  }
+}
+
 function request(path, options = {}) {
   return fetch(`${apiBase}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -61,16 +223,7 @@ async function loadRecipes() {
     notes: cleanClientText(recipe.notes),
     image: recipe.image || '',
     ingredients: (recipe.ingredients || []).map(cleanClientText).filter(Boolean),
-    snapshot: recipe.snapshot ? {
-      ...recipe.snapshot,
-      title: cleanClientText(recipe.snapshot.title),
-      description: cleanClientText(recipe.snapshot.description),
-      image: recipe.snapshot.image || '',
-      ingredients: (recipe.snapshot.ingredients || []).map(cleanClientText).filter(Boolean),
-      instructions: (recipe.snapshot.instructions || []).map(cleanClientText).filter(Boolean),
-      totalTime: cleanClientText(recipe.snapshot.totalTime),
-      recipeYield: cleanClientText(recipe.snapshot.recipeYield)
-    } : null
+    snapshot: normalizeClientSnapshot(recipe.snapshot)
   }));
   renderAll();
 }
@@ -141,7 +294,7 @@ function renderStats() {
 function renderRecipes() {
   const filtered = getFilteredRecipes();
   renderStats();
-  el('resultsSummary').textContent = filtered.length ? `${filtered.length} recette(s) affichée(s)` : 'Aucune recette trouvée';
+  el('resultsSummary').textContent = filtered.length ? `${filtered.length} recette(s) trouvée(s)` : 'Aucune recette trouvée';
 
   if (!filtered.length) {
     el('recipesGrid').innerHTML = '<div class="empty">Aucune recette trouvée.</div>';
@@ -160,16 +313,14 @@ function renderRecipes() {
           <div class="badges">
             <span class="badge">${escapeHtml(recipe.category || 'Autre')}</span>
             ${recipe.favorite ? '<span class="badge">Favori</span>' : ''}
-            ${recipe.snapshot ? '<span class="badge">Copie sauvegardée</span>' : ''}
           </div>
           <div class="recipe-head">
             <h3>${escapeHtml(recipe.title)}</h3>
             <button class="fav-btn" type="button" onclick="toggleFavorite('${recipe.id}')">${recipe.favorite ? '⭐' : '☆'}</button>
           </div>
-          <div style="margin-top:8px;">${recipe.url ? `<a class="link" href="${escapeHtml(recipe.url)}" target="_blank" rel="noopener noreferrer">Ouvrir la recette</a>` : '<span class="muted">Aucun lien</span>'}</div>
+          <div style="margin-top:8px;">${recipe.url ? `<a class="link" href="${escapeHtml(recipe.url)}" target="_blank" rel="noopener noreferrer" onclick="enableWakeLock()">Ouvrir la recette</a>` : '<span class="muted">Aucun lien</span>'}</div>
           ${recipe.matchCount > 0 ? `<div class="match">${recipe.matchCount} ingrédient(s) trouvé(s)</div>` : ''}
-          ${(recipe.notes || recipe.snapshot?.description) ? `<p class="description-preview muted">${escapeHtml(recipe.notes || recipe.snapshot?.description)}</p>` : ''}
-          ${recipe.snapshot?.instructions?.length ? `<p class="archive-preview">Copie locale : ${recipe.snapshot.instructions.length} étape(s) enregistrée(s).</p>` : ''}
+
           <div class="ingredient-label">${displayIngredients.length ? 'Ingrédients' : 'Aucun ingrédient détecté'}</div>
           ${displayIngredients.length ? `<ul class="ingredients-list">${displayIngredients.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}
         </div>
@@ -266,14 +417,14 @@ function setActiveCategoryChip(value) {
 }
 
 function setSnapshot(snapshot) {
-  currentSnapshot = snapshot || null;
+  currentSnapshot = normalizeClientSnapshot(snapshot);
   const status = el('snapshotStatus');
-  if (!snapshot) {
+  if (!currentSnapshot) {
     status.textContent = 'Aucune copie locale enregistrée pour cette recette.';
     status.classList.remove('active');
     return;
   }
-  status.textContent = `Copie locale prête : ${snapshot.ingredients?.length || 0} ingrédient(s), ${snapshot.instructions?.length || 0} étape(s).`;
+  status.textContent = `Copie locale prête : ${currentSnapshot.ingredients.length} ingrédient(s), ${currentSnapshot.instructions.length} étape(s).`;
   status.classList.add('active');
 }
 
@@ -285,6 +436,7 @@ function resetForm() {
   el('url').value = '';
   el('image').value = '';
   el('ingredients').value = '';
+  el('steps').value = '';
   el('notes').value = '';
   setActiveCategoryChip('Entrée');
   setSnapshot(null);
@@ -306,17 +458,19 @@ async function openImportModalWithUrl(url) {
       method: 'POST',
       body: JSON.stringify({ url: url.trim() })
     });
+    const safeSnapshot = normalizeClientSnapshot(imported.snapshot);
     resetForm();
     el('formEyebrow').textContent = 'Import automatique';
     el('formTitle').textContent = 'Vérifie puis enregistre';
-    el('title').value = imported.title || '';
+    el('title').value = imported.title || safeSnapshot?.title || '';
     el('url').value = imported.url || url.trim();
-    el('image').value = imported.image || '';
-    el('ingredients').value = (imported.ingredients || []).join('\n');
-    el('notes').value = imported.description || '';
-    const guessed = imported.category || inferCategory(imported.title || '', imported.description || '');
+    el('image').value = imported.image || safeSnapshot?.image || '';
+    el('ingredients').value = ((Array.isArray(imported.ingredients) && imported.ingredients.length ? imported.ingredients : safeSnapshot?.ingredients) || []).join('\n');
+    el('steps').value = (safeSnapshot?.instructions || []).join('\n');
+    el('notes').value = imported.description || safeSnapshot?.description || '';
+    const guessed = imported.category || inferCategory(imported.title || safeSnapshot?.title || '', imported.description || safeSnapshot?.description || '');
     setActiveCategoryChip(guessed);
-    setSnapshot(imported.snapshot || null);
+    setSnapshot(safeSnapshot);
     importInput.value = '';
     openModal(el('editModal'));
     showToast('Import terminé.');
@@ -341,14 +495,30 @@ function inferCategory(title, description) {
 
 async function submitForm(event) {
   event.preventDefault();
+  const formTitle = el('title').value.trim();
+  const formUrl = el('url').value.trim();
+  const formImage = el('image').value.trim();
+  const formIngredients = parseIngredients(el('ingredients').value);
+  const formSteps = parseSteps(el('steps').value);
+  const formNotes = el('notes').value.trim();
+
   const payload = {
-    title: el('title').value.trim(),
-    url: el('url').value.trim(),
+    title: formTitle,
+    url: formUrl,
     category: el('category').value,
-    image: el('image').value.trim(),
-    ingredients: parseIngredients(el('ingredients').value),
-    notes: el('notes').value.trim(),
-    snapshot: currentSnapshot
+    image: formImage,
+    ingredients: formIngredients,
+    notes: formNotes,
+    snapshot: {
+      ...(currentSnapshot || {}),
+      sourceUrl: (currentSnapshot && currentSnapshot.sourceUrl) || formUrl,
+      title: formTitle,
+      description: formNotes,
+      image: formImage,
+      ingredients: formIngredients,
+      instructions: formSteps,
+      savedAt: (currentSnapshot && currentSnapshot.savedAt) || new Date().toISOString()
+    }
   };
   if (!payload.title && !payload.url) {
     showToast('Ajoute au moins un titre ou un lien.');
@@ -379,16 +549,18 @@ async function submitForm(event) {
 function openEditModal(id) {
   const recipe = recipes.find(item => item.id === id);
   if (!recipe) return;
+  const safeSnapshot = normalizeClientSnapshot(recipe.snapshot);
   editingId = id;
   el('formEyebrow').textContent = 'Modifier';
   el('formTitle').textContent = recipe.title;
-  el('title').value = recipe.title || '';
+  el('title').value = recipe.title || safeSnapshot?.title || '';
   el('url').value = recipe.url || '';
-  el('image').value = recipe.image || '';
-  el('ingredients').value = (recipe.ingredients || []).join('\n');
-  el('notes').value = recipe.notes || '';
+  el('image').value = recipe.image || safeSnapshot?.image || '';
+  el('ingredients').value = ((recipe.ingredients && recipe.ingredients.length ? recipe.ingredients : safeSnapshot?.ingredients) || []).join('\n');
+  el('steps').value = (safeSnapshot?.instructions || []).join('\n');
+  el('notes').value = recipe.notes || safeSnapshot?.description || '';
   setActiveCategoryChip(recipe.category || 'Entrée');
-  setSnapshot(recipe.snapshot || null);
+  setSnapshot(safeSnapshot);
   openModal(el('editModal'));
 }
 
@@ -454,7 +626,18 @@ async function exportFile(path, filename) {
 }
 
 function bindEvents() {
+  el('createRecipeBtn').addEventListener('click', () => {
+    resetForm();
+    el('formEyebrow').textContent = 'Créer recette';
+    el('formTitle').textContent = 'Nouvelle recette';
+    openModal(el('editModal'));
+  });
   el('importBtn').addEventListener('click', () => openImportModalWithUrl(el('importUrl').value));
+  el('photoImportBtn').addEventListener('click', () => {
+    const input = el('photoImportInput');
+    if (input) input.click();
+  });
+  el('photoImportInput').addEventListener('change', event => importFromPhotoFile(event.target.files?.[0]));
   el('recipeForm').addEventListener('submit', submitForm);
   el('cancelBtn').addEventListener('click', () => { closeModal(el('editModal')); resetForm(); });
   el('closeEditBtn').addEventListener('click', () => { closeModal(el('editModal')); resetForm(); });

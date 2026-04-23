@@ -1,4 +1,4 @@
-const CACHE = 'papa-poulpe-v042';
+const CACHE = 'papa-poulpe-v045';
 const ASSETS = [
   '/',
   '/index.html',

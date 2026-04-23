@@ -17,7 +17,7 @@
       <header class="hero">
         <div class="hero-copy">
           <p class="eyebrow">Web-app iPhone</p>
-          <div class="hero-title-row"><h1>Les recettes de papa poulpe</h1><span class="version-pill">v0.42</span></div>
+          <div class="hero-title-row"><h1>Les recettes de papa poulpe</h1><span class="version-pill">v0.45</span></div>
           <p class="hero-text">Enregistre tes recettes, importe un lien, retrouve vite quoi cuisiner avec ce que tu as déjà chez toi.</p>
           <div class="hero-actions">
             <button class="btn secondary" id="exportJsonBtn" type="button">Exporter JSON</button>
@@ -32,18 +32,16 @@
       <section class="stats" id="stats"></section>
 
       <section class="panel">
-        <div class="panel-head">
-          <div>
-            <h2>Import automatique depuis un lien</h2>
-            <p class="section-subtitle">L’app tente de récupérer titre, image, ingrédients, description et étapes. Une copie locale utile est aussi sauvegardée.</p>
-          </div>
-        </div>
         <div class="import-box">
-          <div class="import-row">
-            <input id="importUrl" type="url" placeholder="Colle le lien d’une recette" />
-            <button class="btn primary" id="importBtn" type="button">Importer</button>
+          <div class="import-row import-row-tight">
+            <div class="import-main import-main-3">
+              <input id="importUrl" type="url" placeholder="Colle le lien d’une recette" />
+              <button class="btn primary import-inline-btn" id="importBtn" type="button">Importer</button>
+              <button class="btn secondary create-inline-btn" id="createRecipeBtn" type="button">Créer recette</button>
+            </div>
+            <button class="btn secondary icon-only-btn" id="photoImportBtn" type="button" aria-label="Photo recette" title="Photo recette">📷</button>
+            <input id="photoImportInput" type="file" accept="image/*" capture="environment" class="visually-hidden" />
           </div>
-          <p class="help">Après l’import, tu peux corriger la fiche avant de l’enregistrer.</p>
         </div>
       </section>
 
@@ -136,7 +134,8 @@
 
         <input id="image" placeholder="Lien image" />
         <textarea id="ingredients" placeholder="Ingrédients, un par ligne ou séparés par des virgules"></textarea>
-        <textarea id="notes" placeholder="Notes personnelles"></textarea>
+        <textarea id="steps" placeholder="Étapes de réalisation, une par ligne"></textarea>
+        <textarea id="notes" placeholder="Description / notes personnelles"></textarea>
         <div class="snapshot-status" id="snapshotStatus">Aucune copie locale enregistrée pour cette recette.</div>
         <div class="form-actions">
           <button class="btn primary" type="submit">Enregistrer</button>
